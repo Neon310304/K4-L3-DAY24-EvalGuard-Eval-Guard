@@ -82,3 +82,36 @@ def test_weakest_distribution_is_quality_not_size():
             results.append(RagasResult(len(results)+1,dist,"Q","A",["C"],"GT",
                                        value,value,value,value))
     assert cluster_analysis(results)["dominant_failure_distribution"] == "adversarial"
+
+
+def test_bottom_diagnosis_reads_answer_context_and_reference():
+    result = RagasResult(
+        16, "factual", "Tài khoản VPN bị khóa sau bao nhiêu ngày?",
+        "Context chỉ nói phiên VPN ngắt sau 12 giờ, không có thông tin.",
+        ["[source: vpn_truy_cap.md] Phiên VPN tự động ngắt sau 12 giờ."],
+        "Tài khoản VPN tự động bị khóa sau 60 ngày không hoạt động.",
+        .5, .0, .0, .0,
+    )
+    row = bottom_10([result])[0]
+    assert result.ground_truth in row["diagnosis"]
+    assert "12 giờ" in row["diagnosis"]
+    assert "vpn_truy_cap.md" in row["suggested_fix"]
+
+
+def test_ragas_mapping_rows_keep_scores_aligned(monkeypatch):
+    from collections import UserDict
+    from decimal import Decimal
+
+    questions = load_test_set_50q()[:2]
+    answers = [{**q, "answer": f"A{q['id']}", "contexts": [f"C{q['id']}"]} for q in questions]
+    metric_names = ("faithfulness", "answer_relevancy", "context_precision", "context_recall")
+    metrics = [UserDict({name: Decimal(value) for name in metric_names}) for value in ("0.2", "0.9")]
+    evaluate = Mock(return_value={"per_question": metrics,
+                                  "metadata": {"evaluator_models": ["evaluator", "embedding"]}})
+    monkeypatch.setitem(sys.modules, "src.m4_eval", SimpleNamespace(evaluate_ragas=evaluate))
+    evaluation = run_ragas_50q(answers)
+    assert [r.question_id for r in evaluation.results] == [q["id"] for q in questions]
+    assert [r.answer for r in evaluation.results] == [a["answer"] for a in answers]
+    assert [r.contexts for r in evaluation.results] == [a["contexts"] for a in answers]
+    assert [r.faithfulness for r in evaluation.results] == [.2, .9]
+    assert all(type(getattr(r, name)) is float for r in evaluation.results for name in metric_names)

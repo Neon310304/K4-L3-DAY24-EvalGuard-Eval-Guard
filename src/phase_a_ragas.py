@@ -3,9 +3,12 @@ from __future__ import annotations
 """Phase A: RAGAS Production Evaluation — 50q, 3 distributions, cluster analysis."""
 
 import json
+import math
 import os
+import re
 import sys
 from dataclasses import asdict, dataclass
+from collections.abc import Mapping
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import TEST_SET_PATH, ANSWERS_PATH, ARTIFACTS_DIR
@@ -114,12 +117,13 @@ def group_by_distribution(test_set: list[dict]) -> dict[str, list[dict]]:
     Returns:
         {"factual": [...], "multi_hop": [...], "adversarial": [...]}
     """
-    # TODO: Implement
-    # groups = {"factual": [], "multi_hop": [], "adversarial": []}
-    # for item in test_set:
-    #     groups[item["distribution"]].append(item)
-    # return groups
-    return {"factual": [], "multi_hop": [], "adversarial": []}
+    groups = {"factual": [], "multi_hop": [], "adversarial": []}
+    for item in test_set:
+        distribution = item["distribution"]
+        if distribution not in groups:
+            raise ValueError(f"Unknown distribution: {distribution}")
+        groups[distribution].append(item)
+    return groups
 
 
 def run_ragas_50q(answers: list[dict]) -> RagasEvaluation:
@@ -135,32 +139,107 @@ def run_ragas_50q(answers: list[dict]) -> RagasEvaluation:
         4. Return RagasEvaluation(results, raw["metadata"]["evaluator_models"])
            m4 must report its actual LLM/embedding models; never guess JUDGE_MODEL.
     """
-    # TODO: Implement
-    # try:
-    #     from src.m4_eval import evaluate_ragas
-    # except ImportError:
-    #     print("⚠️  Không tìm thấy src/m4_eval.py — đã copy từ Day 18 chưa?")
-    #     raise ValueError("Missing m4 evaluator; cannot declare its actual models")
-    #
-    # questions     = [a["question"]    for a in answers]
-    # ans_texts     = [a["answer"]      for a in answers]
-    # contexts      = [a["contexts"]    for a in answers]
-    # ground_truths = [a["ground_truth"] for a in answers]
-    #
-    # raw = evaluate_ragas(questions, ans_texts, contexts, ground_truths)
-    # per_q = raw.get("per_question", [])
-    #
-    # results = []
-    # for a, pq in zip(answers, per_q):
-    #     results.append(RagasResult(
-    #         question_id=a["id"], distribution=a["distribution"],
-    #         question=a["question"], answer=a["answer"],
-    #         contexts=a["contexts"], ground_truth=a["ground_truth"],
-    #         faithfulness=float(pq.faithfulness), answer_relevancy=float(pq.answer_relevancy),
-    #         context_precision=float(pq.context_precision), context_recall=float(pq.context_recall),
-    #     ))
-    # return RagasEvaluation(results, raw["metadata"]["evaluator_models"])
-    return RagasEvaluation([], [])
+    from src.m4_eval import evaluate_ragas
+
+    raw = evaluate_ragas(
+        [a["question"] for a in answers], [a["answer"] for a in answers],
+        [a["contexts"] for a in answers], [a["ground_truth"] for a in answers],
+    )
+    metrics = raw["per_question"]
+    if len(metrics) != len(answers):
+        raise ValueError("Evaluator must return exactly one row per answer.")
+    models = raw.get("metadata", {}).get("evaluator_models")
+    if not isinstance(models, list) or not models or any(
+        not isinstance(m, str) or not m.strip() for m in models
+    ):
+        raise ValueError("m4 must report actual evaluator model IDs.")
+    results = []
+    for answer, row in zip(answers, metrics):
+        scores = {}
+        for metric in DIAGNOSTIC_TREE:
+            value = row[metric] if isinstance(row, Mapping) else getattr(row, metric)
+            if isinstance(value, bool):
+                raise ValueError(f"Invalid boolean metric: {metric}")
+            value = float(value)
+            if not math.isfinite(value) or not 0 <= value <= 1:
+                raise ValueError(f"Invalid metric {metric}: {value}")
+            scores[metric] = value
+        results.append(RagasResult(
+            question_id=answer["id"], distribution=answer["distribution"],
+            question=answer["question"], answer=answer["answer"],
+            contexts=answer["contexts"], ground_truth=answer["ground_truth"], **scores,
+        ))
+    return RagasEvaluation(results, list(models))
+
+
+def _diagnose_result(result: RagasResult) -> tuple[str, str]:
+    """Content review hints for this HR corpus, not a metric-to-cause classifier.
+
+    Source routing is used only in the evaluation analysis. It never changes
+    retrieval, generation, reference answers or measured scores. Missing a file
+    in the final contexts does not identify whether search or reranking lost it.
+    """
+    question = result.question.casefold()
+    context_text = "\n".join(result.contexts).casefold()
+    sources = list(dict.fromkeys(
+        source.strip() for context in result.contexts
+        for source in re.findall(r"\[source:\s*([^|\]\n]+)", context)
+    ))
+    # These are corpus topics to inspect, not canned diagnoses keyed by test IDs.
+    routes = [
+        (("kết hôn",), ("nghi_phep_dac_biet.md",)),
+        (("cha hoặc mẹ",), ("nghi_phep_dac_biet.md",)),
+        (("vợ sinh con",), ("nghi_phep_dac_biet.md",)),
+        (("lương", "phân loại"), ("ky_luong.md", "phan_loai_du_lieu.md")),
+        (("vpn", "khóa"), ("vpn_truy_cap.md",)),
+        (("thời gian thử việc",), ("thu_viec.md",)),
+        (("đào tạo", "bắt buộc"), ("dao_tao_noi_bo.md",)),
+        (("mật khẩu",), ("mat_khau_v2.md",)),
+        (("pvi", "thử việc"), ("bao_hiem_suc_khoe.md", "thu_viec.md")),
+    ]
+    expected = list(dict.fromkeys(
+        source for terms, files in routes if all(term in question for term in terms)
+        for source in files
+    ))
+    missing = [source for source in expected if source not in sources]
+    abstains = any(phrase in result.answer.casefold() for phrase in (
+        "không cung cấp thông tin", "không có thông tin", "không thể xác định",
+        "không thể trả lời", "không tìm thấy", "không được đề cập",
+    ))
+    answer_excerpt = result.answer[:160].replace("\n", " ")
+    diagnosis = (
+        f"Answer {'chưa trả lời được yêu cầu' if abstains else 'cần đối chiếu từng khẳng định'}: "
+        f"«{answer_excerpt}». Reference nêu: «{result.ground_truth}». "
+        f"Nguồn trong contexts: {', '.join(sources) or 'không có metadata source'}. "
+    )
+    if not result.contexts:
+        diagnosis += "Không có context làm căn cứ; cần kiểm tra retrieval trước generation."
+    elif missing:
+        diagnosis += (f"Top contexts thiếu nguồn cần đối chiếu {', '.join(missing)}; "
+                      "chưa có log candidates để tách lỗi search khỏi rerank.")
+    elif abstains and expected:
+        diagnosis += ("Đã lấy đúng tên file nhưng answer chưa đáp ứng; kiểm tra passage "
+                      "thiếu điều kiện hay generation bỏ sót căn cứ. Metadata source không "
+                      "chứng minh passage đã trả lời được câu hỏi.")
+    else:
+        diagnosis += (f"{result.worst_metric} thấp nhất chỉ là tín hiệu review, "
+                      "chưa đủ quy lỗi cho một module.")
+    if ("vpn" in question and "khóa" in question and "12 giờ" in context_text
+            and "60 ngày" not in context_text):
+        diagnosis += " Đoạn VPN đang nói ngắt phiên sau 12 giờ, không phải khóa tài khoản sau 60 ngày."
+    if ("đào tạo" in question and "bắt buộc" in question
+            and "dao_tao_noi_bo.md" in sources and "6 tháng đầu" not in context_text):
+        diagnosis += " Context đào tạo thiếu nguyên câu quy định nhân viên mới trong 6 tháng đầu."
+    if "pvi" in question and "thử việc" in question and "thu_viec.md" in missing:
+        diagnosis += " Thiếu exclusion PVI trong chính sách thử việc; không suy ra eligibility từ gói gia đình/bồi hoàn."
+    targets = ", ".join(expected) or "các mục chính sách liên quan"
+    fix = (f"Với câu hỏi «{result.question}», kiểm tra candidates trước/sau rerank tại {targets}; "
+           "thử mở rộng parent/mục để giữ nguyên điều kiện, rồi sinh/chấm lại trên một batch riêng.")
+    if result.distribution == "multi_hop":
+        fix += " Thu đủ từng căn cứ trước khi cộng số ngày hoặc suy điều kiện áp dụng."
+    if "hiện hành" in result.ground_truth.casefold() and "v1" in result.ground_truth.casefold():
+        fix += " Giữ cả v1/v2, chọn phiên bản theo thời điểm được hỏi; không xóa policy cũ."
+    return diagnosis, fix
 
 
 def bottom_10(results: list[RagasResult]) -> list[dict]:
@@ -171,24 +250,17 @@ def bottom_10(results: list[RagasResult]) -> list[dict]:
           "question": ..., "avg_score": ..., "worst_metric": ...,
           "diagnosis": ..., "suggested_fix": ...}, ...]
     """
-    # TODO: Implement
-    # sorted_asc = sorted(results, key=lambda r: r.avg_score)
-    # bottom = sorted_asc[:10]
-    # output = []
-    # for i, r in enumerate(bottom):
-    #     diag, fix = DIAGNOSTIC_TREE[r.worst_metric]
-    #     output.append({
-    #         "rank": i + 1,
-    #         "question_id": r.question_id,
-    #         "distribution": r.distribution,
-    #         "question": r.question,
-    #         "avg_score": round(r.avg_score, 4),
-    #         "worst_metric": r.worst_metric,
-    #         "diagnosis": diag,
-    #         "suggested_fix": fix,
-    #     })
-    # return output
-    return []
+    output = []
+    for rank, result in enumerate(sorted(results, key=lambda r: r.avg_score)[:10], 1):
+        diagnosis, fix = _diagnose_result(result)
+        output.append({
+            "rank": rank, "question_id": result.question_id,
+            "distribution": result.distribution, "question": result.question,
+            "avg_score": round(result.avg_score, 4), "worst_metric": result.worst_metric,
+            "diagnosis": diagnosis,
+            "suggested_fix": fix,
+        })
+    return output
 
 
 def cluster_analysis(results: list[RagasResult]) -> dict:
@@ -211,31 +283,27 @@ def cluster_analysis(results: list[RagasResult]) -> dict:
           "insight": "..."
         }
     """
-    # TODO: Implement
-    # matrix = {
-    #     metric: {"factual": 0, "multi_hop": 0, "adversarial": 0}
-    #     for metric in DIAGNOSTIC_TREE
-    # }
-    # for r in results:
-    #     matrix[r.worst_metric][r.distribution] += 1
-    #
-    # # Find dominant failure
-    # means = {
-    #     d: sum(r.avg_score for r in results if r.distribution == d) /
-    #        sum(r.distribution == d for r in results)
-    #     for d in ("factual", "multi_hop", "adversarial")
-    #     if any(r.distribution == d for r in results)
-    # }
-    # dominant_dist = min(means, key=means.get)  # lowest quality, NOT largest group
-    # dominant_metric = max(matrix, key=lambda m: sum(matrix[m].values()))
-    # insight = (f"Distribution '{dominant_dist}' có điểm trung bình thấp nhất. "
-    #            f"Metric '{dominant_metric}' là điểm yếu chủ đạo. "
-    #            f"Gợi ý: {DIAGNOSTIC_TREE[dominant_metric][1]}")
-    #
-    # return {"matrix": matrix, "distribution_avg_scores": means,
-    #         "dominant_failure_distribution": dominant_dist,
-    #         "dominant_failure_metric": dominant_metric, "insight": insight}
-    return {}
+    distributions = ("factual", "multi_hop", "adversarial")
+    matrix = {m: {d: 0 for d in distributions} for m in DIAGNOSTIC_TREE}
+    for result in results:
+        matrix[result.worst_metric][result.distribution] += 1
+    means = {}
+    for distribution in distributions:
+        subset = [r for r in results if r.distribution == distribution]
+        if subset:
+            means[distribution] = sum(r.avg_score for r in subset) / len(subset)
+    weakest = min(means, key=means.get) if means else None
+    metric = max(matrix, key=lambda m: sum(matrix[m].values())) if results else None
+    insight = (
+        f"Lowest mean distribution: {weakest} ({means[weakest]:.4f}). "
+        f"Most frequent lowest metric: {metric}. Counts cover all questions, not only failures. "
+        "Review answer/context/reference for each bottom row before attributing cause. "
+        "For abstentions, inspect missing source passages and truncated conditions before changing prompts."
+        if results else "No observations; weakest distribution and metric cannot be inferred."
+    )
+    return {"matrix": matrix, "distribution_avg_scores": means,
+            "dominant_failure_distribution": weakest,
+            "dominant_failure_metric": metric, "insight": insight}
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────

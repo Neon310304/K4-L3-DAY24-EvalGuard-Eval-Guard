@@ -10,3 +10,8 @@ nemoguardrails==0.10.0
 openai==1.109.1
 annoy==1.17.3
 numpy==1.26.4
+# Keep RAGAS 0.1 / NumPy 1.x compatible with current package registries.
+pyarrow==17.0.0
+pandas==2.2.3
+sentence-transformers==3.0.1
+transformers==4.44.2

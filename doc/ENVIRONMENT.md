@@ -72,6 +72,36 @@ mất lâu tùy máy và mạng. Generation/enrichment có thể gọi API, có 
 Ghi OS, Python, kết quả pip/import/compiler/model download trong TEAM. Nếu full
 stack cài chưa xong, ghi lỗi thật; không điền “tương thích” dựa trên dry-run.
 
+## Full runtime trong Docker trên Windows
+
+Nếu chưa có MSVC, image Linux Python 3.11 dùng GCC/build-essential để build Annoy.
+Model cache được giữ trong volume; API key đọc từ `.env` được Git ignore.
+Constraints pin PyArrow 17.0.0/NumPy 1.26.4 để tránh lỗi ABI mà `pip check` có thể
+không phát hiện. Dockerfile kiểm tra cả dependency metadata và imports thực tế.
+
+```powershell
+docker compose -f infra/docker-compose.yml --profile runtime build lab
+docker compose -f infra/docker-compose.yml up -d qdrant
+docker compose -f infra/docker-compose.yml run --rm lab python -m pip check
+docker compose -f infra/docker-compose.yml run --rm lab python scripts/verify_runtime.py
+docker compose -f infra/docker-compose.yml run --rm lab python scripts/setup_answers.py --live
+```
+
+Dockerfile pin `en_core_web_lg` 3.8.0 và SHA256 của wheel chính thức. Khi đã có
+wheel đúng hash trong cache, có thể dùng build arg `SPACY_MODEL_URL` để cài lại
+từ bản cache; không commit wheel/cache vào repo.
+
+Sau khi setup đã cache model, kiểm tra pipeline mà không sinh answers mới:
+
+```powershell
+docker compose -f infra/docker-compose.yml run --rm -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 lab python scripts/verify_runtime.py --with-pipeline
+```
+
+Tùy chọn `--with-pipeline` **tạo lại collection lab24_production**, rồi thử
+search/rerank và kiểm tra source/parent metadata. Lệnh không gọi generation hay
+API chấm điểm; dùng models BGE-M3/FlashRank đã cache. Không dùng chế độ offline
+khi chưa tải model xong.
+
 ## Tạo môi trường unit test offline
 
 Khi chỉ sửa logic/scaffold, không cần cài NeMo, ML model hoặc C++ compiler.
@@ -87,3 +117,28 @@ py -3.11 -m venv .venv-tests
 `requirements/requirements-test.txt` ghi dependencies trực tiếp; file `.lock.txt` khóa
 toàn bộ dependencies của tập test. Đây chỉ là lock unit test, không thay constraints hoặc
 cài đặt full runtime. Không commit virtualenv, key hoặc cache model.
+
+## Phục hồi Docker khi WSL không phản hồi
+
+Nếu Docker báo `DockerDesktop/Wsl/CommandTimedOut` và cả `wsl --list --verbose`
+cũng treo, đóng Docker rồi chạy lệnh sau trong PowerShell **Administrator**:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/repair_wsl.ps1
+```
+
+Script dừng các tiến trình Docker/WSL đang kẹt, khởi động lại WslService và kiểm
+tra WSL với timeout; giữ images, volumes và VHD. Log ở `.cache/wsl-repair/`.
+Việc restart dịch vụ sẽ dừng các phiên WSL và containers đang chạy. Khi WSL phản
+hồi, mở Docker bình thường rồi kiểm tra:
+
+```powershell
+docker desktop start --detach
+docker info
+docker compose -f infra/docker-compose.yml up -d qdrant
+```
+
+Runtime guard Windows có thể chọn model đã cài bằng `PRESIDIO_SPACY_MODEL`.
+Batch C trong TEAM dùng `en_core_web_sm`; Docker mặc định `en_core_web_lg`.
+Registry guard chỉ giữ email/phone và pattern VN. Không suy giảm/tăng chất lượng
+hoặc latency chỉ từ đổi model; cần chạy lại cùng protocol để so sánh.

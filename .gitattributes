@@ -1,0 +1,5 @@
+# Preserve the exact source/evidence bytes used by live metadata SHA256 hashes.
+# fixtures JSON was read with CRLF on Windows; answers from Docker uses LF.
+# Do not silently convert either at add/checkout time on another platform.
+fixtures/*.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+artifacts/*.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

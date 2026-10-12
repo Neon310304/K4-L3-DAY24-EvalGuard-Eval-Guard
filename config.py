@@ -3,15 +3,25 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(ROOT_DIR, ".env"))
 
 # --- API Keys ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+API_PROVIDER = os.getenv("API_PROVIDER", "openai").strip().lower()
+if API_PROVIDER == "yescale":
+    OPENAI_API_KEY = os.getenv("YESCALE_API_KEY", "") or OPENAI_API_KEY
+OPENAI_BASE_URL = os.getenv("YESCALE_BASE_URL", "") if API_PROVIDER == "yescale" else ""
+OPENAI_BASE_URL = OPENAI_BASE_URL or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+if OPENAI_API_KEY:
+    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+os.environ["OPENAI_BASE_URL"] = OPENAI_BASE_URL
+API_TIMEOUT_SECONDS = float(os.getenv("API_TIMEOUT_SECONDS", "120"))
 HF_TOKEN = os.getenv("HF_TOKEN", "")  # Optional: for HuggingFace models
 
 # --- Qdrant (same as Day 18) ---
-QDRANT_HOST = "localhost"
-QDRANT_PORT = 6333
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 COLLECTION_NAME = "lab24_production"
 NAIVE_COLLECTION = "lab24_naive"
 
@@ -45,9 +55,14 @@ GUARDRAILS_CONFIG_DIR = os.path.join(ROOT_DIR, "guardrails")
 PAIR_QUESTION_IDS = (1, 5, 12, 21, 41)
 
 # --- LLM Judge ---
-GENERATION_MODEL = "gpt-4o-mini"
-JUDGE_MODEL = "gpt-4o-mini"
+GENERATION_MODEL = os.getenv("GENERATION_MODEL", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+EVALUATOR_MODEL = os.getenv("EVALUATOR_MODEL", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+EVALUATOR_EMBEDDING_MODEL = os.getenv("EVALUATOR_EMBEDDING_MODEL", "text-embedding-3-small")
+GUARD_MODEL = os.getenv("GUARD_MODEL", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+RERANK_MODEL = os.getenv("RERANK_MODEL", "ms-marco-MultiBERT-L-12")
 
 # --- Guardrail latency budget ---
 LATENCY_BUDGET_P95_MS = 500  # Full guard target; Task 12 currently measures input guards only.
 PRESIDIO_LANGUAGE = "en"    # Presidio base language; custom VN recognizers added via PatternRecognizer
+PRESIDIO_SPACY_MODEL = os.getenv("PRESIDIO_SPACY_MODEL", "en_core_web_lg")

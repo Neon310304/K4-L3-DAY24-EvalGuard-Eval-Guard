@@ -1,5 +1,35 @@
 # K4 Track 3A — Production Eval + Guardrail Stack
 
+## Chạy bản triển khai
+
+Cấu hình Yescale nằm trong `.env` (Git ignore). Điền `OPENAI_API_KEY` hoặc
+`YESCALE_API_KEY`; endpoint mặc định `https://api.yescale.io/v1`. Có thể đặt model
+riêng qua `GENERATION_MODEL`, `EVALUATOR_MODEL`, `EVALUATOR_EMBEDDING_MODEL`,
+`JUDGE_MODEL`, `GUARD_MODEL`. `.env.example` chỉ chứa cấu hình, không chứa key.
+Các clients SDK, RAGAS và NeMo đều nhận cùng endpoint.
+
+Runtime Linux Python 3.11 được đóng gói để build Annoy bằng GCC khi Windows chưa
+có MSVC. Chạy từ gốc repo; model cache được giữ trong Docker volume:
+
+```powershell
+docker compose -f infra/docker-compose.yml --profile runtime build lab
+docker compose -f infra/docker-compose.yml up -d qdrant
+docker compose -f infra/docker-compose.yml run --rm lab python -m pip check
+docker compose -f infra/docker-compose.yml run --rm lab python scripts/verify_runtime.py
+docker compose -f infra/docker-compose.yml run --rm lab python scripts/setup_answers.py --live
+docker compose -f infra/docker-compose.yml run --rm lab python scripts/run_experiments.py --phase a --live
+docker compose -f infra/docker-compose.yml run --rm lab python scripts/run_experiments.py --phase b --live
+docker compose -f infra/docker-compose.yml run --rm lab python scripts/run_experiments.py --phase c --live --latency-samples 20
+docker compose -f infra/docker-compose.yml run --rm lab python scripts/write_reports.py
+docker compose -f infra/docker-compose.yml run --rm lab python scripts/check_lab.py --with-tests
+```
+
+Năm module m1–m5 được triển khai theo hợp đồng của lab: hierarchical chunking,
+enrichment metadata có nguồn, BGE-M3 + BM25/Qdrant, multilingual FlashRank và
+RAGAS thật. Hai phiên bản policy vẫn được giữ. Các lệnh live có API cost;
+không chạy lại khi chỉ cần xác minh artifacts đã lưu.
+Trạng thái hoàn thành được ghi ở [checklist](doc/COMPLETION_CHECKLIST.md).
+
 **Bài nhóm: mỗi nhóm dùng và nộp một repo chung của trưởng nhóm.**
 
 **Thời lượng trên lớp:** 15 phút kiểm tra sẵn sàng + 90 phút thực hành

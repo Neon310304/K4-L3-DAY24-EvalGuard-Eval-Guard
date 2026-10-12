@@ -75,7 +75,7 @@ def test_output_checks_supplied_answer(blocked):
     assert rails.generate_async.call_args.kwargs["options"]["rails"]==["output"]
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def guard_batch():
     patch=pytest.MonkeyPatch()
     attacks,clean=read_json(ADVERSARIAL_SET_PATH),read_json(CLEAN_SET_PATH)
@@ -103,6 +103,53 @@ def test_attack_and_clean_control(guard_batch):
     assert len(rows)==28 and all(row["passed"] for row in rows)
     assert sum(row["actual"]=="allowed" for row in rows)==8
     assert rail.await_count==24  # four attacks stopped at PII; 8 clean + 16 other attacks
+
+
+def test_batch_decisions_ignore_expected_and_category(monkeypatch):
+    # Identical inputs with contradictory labels must get identical decisions.
+    # PII must also block when a row is labelled as a clean control.
+    source = [
+        {"id": 901, "category": "attack", "input": "policy question", "expected": "blocked"},
+        {"id": 902, "category": "clean", "input": "policy question", "expected": "allowed"},
+        {"id": 903, "category": "clean", "input": "identifier", "expected": "allowed"},
+        {"id": 904, "category": "clean", "input": "override", "expected": "allowed"},
+    ]
+    pii = Mock(side_effect=lambda text, *args: {"has_pii": text == "identifier"})
+    rail = AsyncMock(side_effect=lambda text, *args: {
+        "allowed": text != "override", "blocked_reason": None, "response": "response"})
+    monkeypatch.setattr(phase, "pii_scan", pii)
+    monkeypatch.setattr(phase, "check_input_rail", rail)
+    analyzer, anonymizer, rails = object(), object(), object()
+    rows = phase.run_adversarial_suite(source, rails=rails,
+                                       analyzer=analyzer, anonymizer=anonymizer)
+    validate_input_results(rows, source)
+    assert [row["id"] for row in rows] == [901, 902, 903, 904]
+    assert [row["actual"] for row in rows] == ["allowed", "allowed", "blocked", "blocked"]
+    assert [row["passed"] for row in rows] == [False, True, False, False]
+    assert [row["blocked_by"] for row in rows] == [None, None, "presidio", "nemo_input"]
+    assert pii.call_count == 4 and rail.await_count == 3
+    assert all(call.args[1:] == (analyzer, anonymizer) for call in pii.call_args_list)
+    assert all(call.args[1:] == (rails,) for call in rail.call_args_list)
+
+
+def test_allowed_input_can_have_refusal_words_in_response():
+    response = "Xin lỗi, tôi không thể duyệt thay quản lý; hãy đăng ký nghỉ phép theo quy trình."
+    returned = SimpleNamespace(response=[{"content": response}],
+        log=SimpleNamespace(activated_rails=[SimpleNamespace(stop=False)]))
+    rails = SimpleNamespace(generate_async=AsyncMock(return_value=returned))
+    result = asyncio.run(phase.check_input_rail("Quy trình nghỉ phép?", rails))
+    assert result == {"allowed": True, "blocked_reason": None, "response": response}
+    assert rails.generate_async.call_args.kwargs["options"]["log"]["activated_rails"] is True
+
+
+def test_safe_output_preserves_supplied_answer_despite_rail_response():
+    answer = "Dùng VPN công ty; liên hệ helpdesk@cty.vn."
+    returned = SimpleNamespace(response=[{"content": "different rail response"}],
+        log=SimpleNamespace(activated_rails=[SimpleNamespace(stop=False)]))
+    rails = SimpleNamespace(generate_async=AsyncMock(return_value=returned))
+    result = asyncio.run(phase.check_output_rail("VPN nào dùng khi WFH?", answer, rails))
+    assert result == {"safe": True, "flagged_reason": None, "final_answer": answer}
+    assert rails.generate_async.call_args.kwargs["options"]["log"]["activated_rails"] is True
 
 
 def test_latency_real_warmup_and_sample_count(monkeypatch):

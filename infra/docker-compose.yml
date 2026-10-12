@@ -1,4 +1,21 @@
 services:
+  lab:
+    profiles: ["runtime"]
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    working_dir: /app
+    environment:
+      QDRANT_HOST: qdrant
+      HF_HUB_DISABLE_XET: "1"
+      FASTEMBED_CACHE_PATH: /root/.cache/fastembed
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+    volumes:
+      - ..:/app
+      - model_cache:/root/.cache
+    depends_on:
+      - qdrant
   qdrant:
     image: qdrant/qdrant:v1.9.7
     ports:
@@ -9,3 +26,4 @@ services:
 
 volumes:
   qdrant_data:
+  model_cache:
