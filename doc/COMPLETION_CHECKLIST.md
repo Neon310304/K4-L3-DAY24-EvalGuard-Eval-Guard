@@ -138,7 +138,7 @@ SHA256 answers của lượt setup mới:
 | Ba báo cáo | Đã cập nhật từ evidence | Ghi lỗi RAG, giới hạn judge, attack còn lọt và input-layer P95=1845.715510ms |
 | TEAM | Đã điền | Thành viên, phân công, INDIVIDUAL, môi trường và nguồn AI hỗ trợ |
 | Checker lần gần nhất | Đạt | check_lab.py --with-tests: 0 failed checks; 104 passed, 3 integration deselected |
-| Commit/push và nộp bài | Đã push revision chấm | Commit `07271d1c39de76e57a7328455ddf40fa620176c8`, tag `day24-submission-20261012`; gửi coach còn chờ kênh nhận |
+| Commit/push và nộp bài | Đã nộp | Commit `07271d1c39de76e57a7328455ddf40fa620176c8`, tag `day24-submission-20261012`; người học xác nhận đã tự nộp |
 
 ## Checkpoint 7 — Kiểm tra và đóng gói nộp
 
@@ -159,7 +159,7 @@ SHA256 answers của lượt setup mới:
   và tag `day24-submission-20261012`.
 - [x] Push source/evidence lên `origin/main`, ghi SHA trong TEAM và xác nhận tag
   trên GitHub; commit hồ sơ sau đó chỉ cập nhật TEAM/checklist.
-- [ ] Gửi link repo và SHA qua kênh coach; cần tên/link kênh nhận bài từ lớp.
+- [x] Nộp bài theo kênh của lớp: người học xác nhận đã tự nộp.
 
 ## Phần cần xử lý ở các checkpoint tiếp theo
 
@@ -171,7 +171,7 @@ SHA256 answers của lượt setup mới:
   dữ liệu PII trong artifacts là fixture giả lập, TEAM chỉ giữ danh tính được cung cấp.
 - [x] Chuẩn bị commit theo yêu cầu nộp: `07271d1c39de76e57a7328455ddf40fa620176c8`
   và tag `day24-submission-20261012` đã push.
-- [ ] Gửi một link repo/commit qua kênh coach khi lớp cung cấp kênh nhận bài.
+- [x] Nộp repo/commit: người học xác nhận đã tự nộp.
 
 Lượt setup mới làm thay đổi answers nên Phase A/B đã chạy lại để đồng bộ source
 hashes và nội dung, không sửa hash báo cáo cũ. Không cần chạy lại các batch này khi

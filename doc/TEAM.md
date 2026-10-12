@@ -13,7 +13,7 @@ là deadline của lớp.
 Phiên bản source/evidence để chấm được cố định bằng tag `day24-submission-20261012`
 ở commit `07271d1c39de76e57a7328455ddf40fa620176c8`. Commit hồ sơ tiếp theo chỉ
 ghi lại SHA/tag trong TEAM/checklist; không thay đổi source, artifacts hay reports.
-Link repo đã push công khai; chưa gửi qua kênh lớp vì chưa có tên/link kênh coach.
+Link repo đã push công khai; người học xác nhận đã tự nộp bài.
 
 ## Thành viên và phân công
 
@@ -237,5 +237,7 @@ offline đạt, 3 integration deselected; checker 0 failed checks.
 
 ## Cập nhật sau khi nộp
 
-Chưa có lần nộp qua kênh lớp trong phiên làm việc này. Khi gửi bài, lưu commit SHA
-và thời điểm gửi; cập nhật sau deadline phải ghi commit/lý do và áp dụng quyết định coach.
+Người học xác nhận đã tự nộp bài. Revision dùng để chấm được ghi ở đầu TEAM;
+lần cập nhật này chỉ ghi nhận trạng thái nộp, giữ nguyên source và artifacts của revision đó.
+Thời điểm gửi và kênh nhận cụ thể chưa được cung cấp. Cập nhật sau deadline phải
+ghi commit/lý do và áp dụng quyết định coach.
