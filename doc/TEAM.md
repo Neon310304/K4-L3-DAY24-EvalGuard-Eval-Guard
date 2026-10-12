@@ -10,9 +10,10 @@ Ngày thực hiện: 12/10/2026 (UTC+07:00). Ngày lab/deadline chính thức á
 thông báo lớp; chưa được cung cấp trong phiên làm việc. Không tự coi ngày thực hiện
 là deadline của lớp.
 
-Phiên bản source/evidence để chấm được cố định bằng tag `day24-submission-20261012`.
-SHA được ghi ở commit hồ sơ tiếp theo trên main, chỉ sửa TEAM/checklist để không
-thay đổi phiên bản chấm. Chưa gửi link qua kênh lớp vì chưa có tên/link kênh coach.
+Phiên bản source/evidence để chấm được cố định bằng tag `day24-submission-20261012`
+ở commit `07271d1c39de76e57a7328455ddf40fa620176c8`. Commit hồ sơ tiếp theo chỉ
+ghi lại SHA/tag trong TEAM/checklist; không thay đổi source, artifacts hay reports.
+Link repo đã push công khai; chưa gửi qua kênh lớp vì chưa có tên/link kênh coach.
 
 ## Thành viên và phân công
 
@@ -108,7 +109,9 @@ Trần Quốc Vượng phụ trách Tasks 1–4 và đọc các assertions dư�
 RAGAS lấy từ batch live lúc 2026-10-12T05:35:59.168641+00:00. Các lần kiểm tra sử
 dụng workspace hiện tại và cùng answers SHA256
 db39b713f8872579f5d05641272608595f6ef61f2002def3585095b7cb34a0e9.
-Commit nộp chưa được xác lập; không dùng SHA cũ để đại diện các thay đổi chưa commit.
+Commit source/evidence dùng để chấm: `07271d1c39de76e57a7328455ddf40fa620176c8`
+(tag `day24-submission-20261012`). Commit hồ sơ sau đó chỉ cập nhật thông tin nộp,
+không thay đổi revision này.
 
 | Test trong tests/test_phase_a.py | Hàm / Task | Điều kiện assertions cần giải thích |
 |---|---|---|
